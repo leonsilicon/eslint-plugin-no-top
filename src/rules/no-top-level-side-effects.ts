@@ -13,6 +13,7 @@ import type {
   Program,
   Property,
   Super,
+  TaggedTemplateExpression,
   VariableDeclarator,
 } from "estree";
 
@@ -76,12 +77,16 @@ function isCallTo(node: CallExpression, name: string): boolean {
   return false;
 }
 
-function isInAllowedNamespace(node: CallExpression, options: Options): boolean {
+function isInAllowedNamespace(
+  node: CallExpression | NewExpression | TaggedTemplateExpression,
+  options: Options,
+): boolean {
   if (options.allowedNamespaces.length === 0) {
     return false;
   }
 
-  let current: Expression | Super | ChainElement = node;
+  let current: Expression | Super | ChainElement =
+    node.type === "TaggedTemplateExpression" ? node.tag : node;
   while (true) {
     switch (current.type) {
       case "Identifier":
@@ -476,6 +481,14 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ConditionalExpression: (node) => {
+        if (options.allowDerived) {
+          return;
+        }
+
+        if (isAllowedTernaryOperand(node, options)) {
+          return;
+        }
+
         if (!isTopLevel(node)) {
           return;
         }
@@ -646,6 +659,10 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       TaggedTemplateExpression: (node) => {
+        if (isInAllowedNamespace(node, options)) {
+          return;
+        }
+
         if (!isTopLevel(node)) {
           return;
         }

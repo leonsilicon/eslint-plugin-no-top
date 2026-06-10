@@ -11,6 +11,7 @@ const options: {
   [key: string]: {
     allowDerived?: boolean;
     allowedCalls?: string[];
+    allowedNamespaces?: string[];
     allowedNews?: string[];
     allowFunctionProperties?: boolean;
     allowIIFE?: boolean;
@@ -38,6 +39,9 @@ const options: {
   },
   allowNoNews: {
     allowedNews: [],
+  },
+  allowNamespaceStyled: {
+    allowedNamespaces: ["styled"],
   },
   allowPropertyAccess: {
     allowPropertyAccess: true,
@@ -989,6 +993,61 @@ const valid: RuleTester.ValidTestCase[] = [
       options: [{ ...options.allowFunctionProperties, ...options.allowDerived }],
     },
   ],
+
+  // Tagged template expressions inside an allowed namespace
+  ...[
+    {
+      code: "const GlossText = styled.Text`color: red;`;",
+      options: [options.allowNamespaceStyled],
+    },
+    {
+      code: "const GlossText = styled.Text`font-size: ${(p) => p.$fontSize}px;`;",
+      options: [options.allowNamespaceStyled],
+    },
+    {
+      code: "const Foo = styled(Bar)`color: red;`;",
+      options: [options.allowNamespaceStyled],
+    },
+  ],
+
+  // Chained builder calls inside an allowed namespace (e.g. ts-pattern)
+  ...[
+    {
+      code: "const x = match(value).with(pat, () => 1).exhaustive();",
+      options: [{ allowedNamespaces: ["match"] }],
+    },
+    {
+      code: "const x = match(value).returnType().with(pat, () => 1).otherwise(() => 0);",
+      options: [{ allowedNamespaces: ["match"] }],
+    },
+    {
+      code: "const x = match(value).with(a, () => 1).with(b, () => 2).with(c, () => 3).exhaustive();",
+      options: [{ allowedNamespaces: ["match"] }],
+    },
+  ],
+
+  // Top-level conditional expressions (ternaries)
+  ...[
+    {
+      code: 'const foo = cond ? "a" : "b";',
+      options: [options.allowDerived],
+    },
+    {
+      code: "const foo = cond ? a : b;",
+    },
+    {
+      code: "const foo = cond ? ok() : fallback();",
+      options: [{ ...options.allowDerived, allowedCalls: ["ok", "fallback"] }],
+    },
+    {
+      code: "const foo = cond ? match(a).with(p, () => 1).exhaustive() : match(b).with(p, () => 2).exhaustive();",
+      options: [{ ...options.allowDerived, allowedNamespaces: ["match"] }],
+    },
+    {
+      code: "const foo = cond ? (other ? a : b) : c;",
+      options: [options.allowDerived],
+    },
+  ],
 ];
 
 const invalid: RuleTester.InvalidTestCase[] = [
@@ -1162,6 +1221,20 @@ const invalid: RuleTester.InvalidTestCase[] = [
         endColumn: 39,
       },
     ],
+  },
+  {
+    code: "const GlossText = styled.Text`color: red;`;",
+    options: [{ allowedNamespaces: ["css"] }],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: "const x = match(value).with(pat, () => 1).exhaustive();",
+    options: [{ allowedNamespaces: ["other"] }],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: 'const foo = cond ? notAllowed() : "b";',
+    errors: [{ messageId: "0" }],
   },
   {
     code: `(function() { return ''; })();`,
