@@ -16,6 +16,8 @@ const options: {
     allowFunctionProperties?: boolean;
     allowIIFE?: boolean;
     allowPropertyAccess?: boolean;
+    allowSpread?: boolean;
+    allowThrow?: boolean;
     commonjs?: boolean;
   };
 } = {
@@ -45,6 +47,12 @@ const options: {
   },
   allowPropertyAccess: {
     allowPropertyAccess: true,
+  },
+  allowSpread: {
+    allowSpread: true,
+  },
+  allowThrow: {
+    allowThrow: true,
   },
   commonjs: {
     commonjs: true,
@@ -1046,6 +1054,104 @@ const valid: RuleTester.ValidTestCase[] = [
     {
       code: "const foo = cond ? (other ? a : b) : c;",
       options: [options.allowDerived],
+    },
+  ],
+
+  // Spread elements, allowed via allowSpread
+  ...[
+    {
+      code: `const x = { ...foo };`,
+      options: [options.allowSpread],
+    },
+    {
+      code: `const x = { foo: 1, ...bar };`,
+      options: [options.allowSpread],
+    },
+    {
+      code: `const arr = [...foo];`,
+      options: [options.allowSpread],
+    },
+    {
+      code: `const arr = [1, ...foo, 2];`,
+      options: [options.allowSpread],
+    },
+    {
+      code: `foo(...bar);`,
+      options: [{ ...options.allowSpread, allowedCalls: ["foo"] }],
+    },
+    {
+      code: `const x = { ...ok() };`,
+      options: [{ ...options.allowSpread, allowedCalls: ["ok"] }],
+    },
+    {
+      code: `const arr = [...ok()];`,
+      options: [{ ...options.allowSpread, allowedCalls: ["ok"] }],
+    },
+  ],
+
+  // If statements, allowed via allowDerived
+  ...[
+    {
+      code: `if (foo) { const x = 1; }`,
+      options: [options.allowDerived],
+    },
+    {
+      code: `if (typeof foo !== "string") { /* noop */ }`,
+      options: [options.allowDerived],
+    },
+    {
+      code: `
+        if (foo) {
+          const x = 1;
+        } else {
+          const y = 2;
+        }
+      `,
+      options: [options.allowDerived],
+    },
+    {
+      code: `
+        if (foo) {
+          const x = 1;
+        } else if (bar) {
+          const y = 2;
+        }
+      `,
+      options: [options.allowDerived],
+    },
+    {
+      code: `if (foo) { const x = ok(); }`,
+      options: [{ ...options.allowDerived, allowedCalls: ["ok"] }],
+    },
+    {
+      code: `if (ok()) { const x = 1; }`,
+      options: [{ ...options.allowDerived, allowedCalls: ["ok"] }],
+    },
+  ],
+
+  // Throw statements, allowed via allowThrow
+  ...[
+    {
+      code: `throw new Error("boom");`,
+      options: [options.allowThrow],
+    },
+    {
+      code: `throw foo;`,
+      options: [options.allowThrow],
+    },
+    {
+      code: `throw makeError();`,
+      options: [options.allowThrow],
+    },
+    {
+      // The canonical guard idiom: a typeof check that throws. The `if` needs
+      // allowDerived; the `throw` inside it needs allowThrow.
+      code: `
+        if (typeof foo !== "string") {
+          throw new TypeError("foo must be a string");
+        }
+      `,
+      options: [{ ...options.allowDerived, ...options.allowThrow }],
     },
   ],
 ];
@@ -4244,6 +4350,66 @@ const invalid: RuleTester.InvalidTestCase[] = [
         endColumn: 19,
       },
     ],
+  },
+
+  // allowSpread still reports disallowed expressions inside the spread
+  {
+    code: `const x = { ...bad() };`,
+    options: [options.allowSpread],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: `const arr = [...bad()];`,
+    options: [options.allowSpread],
+    errors: [{ messageId: "0" }],
+  },
+
+  // allowDerived allows the `if` but still reports side effects inside it
+  {
+    code: `if (foo) { bad(); }`,
+    options: [options.allowDerived],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: `if (bad()) { const x = 1; }`,
+    options: [options.allowDerived],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: `if (foo) { const x = new Bar(); }`,
+    options: [options.allowDerived],
+    errors: [{ messageId: "0" }],
+  },
+  {
+    code: `
+      if (foo) {
+        const x = 1;
+      } else {
+        bad();
+      }
+    `,
+    options: [options.allowDerived],
+    errors: [{ messageId: "0" }],
+  },
+  // A `throw` inside an allowed `if` still needs allowThrow
+  {
+    code: `
+      if (typeof foo !== "string") {
+        throw new TypeError("foo must be a string");
+      }
+    `,
+    options: [options.allowDerived],
+    errors: [{ messageId: "0" }],
+  },
+  // `if` is still reported when allowDerived is not enabled
+  {
+    code: `if (foo) { const x = 1; }`,
+    errors: [{ messageId: "0" }],
+  },
+  // `throw` is still reported when allowThrow is not enabled
+  {
+    code: `throw new Error("boom");`,
+    errors: [{ messageId: "0" }],
   },
 ];
 

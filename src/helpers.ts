@@ -33,9 +33,12 @@ export function IsCommonJs(node: Rule.Node) {
   return getProgram(node).sourceType === "script";
 }
 
-export function isTopLevel(node: Rule.Node) {
+export function isTopLevel(node: Rule.Node, transparentTypes?: ReadonlySet<string>) {
   let scope = node.parent;
-  while (scope !== null && topLevelTypes.has(scope.type)) {
+  while (
+    scope !== null &&
+    (topLevelTypes.has(scope.type) || transparentTypes?.has(scope.type) === true)
+  ) {
     scope = scope.parent;
   }
   return scope === null;

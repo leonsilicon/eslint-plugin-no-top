@@ -27,6 +27,8 @@ type Options = {
   readonly allowFunctionProperties: boolean;
   readonly allowIIFE: boolean;
   readonly allowPropertyAccess: boolean;
+  readonly allowSpread: boolean;
+  readonly allowThrow: boolean;
   readonly commonjs: boolean | undefined;
   readonly isCommonjs: (node: Rule.Node) => boolean;
 };
@@ -39,6 +41,8 @@ const defaultOptions: Omit<Options, "isCommonjs"> = {
   allowFunctionProperties: false,
   allowIIFE: false,
   allowPropertyAccess: true,
+  allowSpread: false,
+  allowThrow: false,
   commonjs: undefined,
 };
 
@@ -320,6 +324,10 @@ function toJs(node: MemberExpression): string | undefined {
     } else if (node.object.type === "Identifier") {
       id.push(node.object.name);
       break;
+    } else if (node.object.type === "MetaProperty") {
+      // e.g. `import.meta` in `import.meta.glob(...)`
+      id.push(`${node.object.meta.name}.${node.object.property.name}`);
+      break;
     } else {
       return undefined;
     }
@@ -375,6 +383,15 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
               "Configure whether top level property accesses (and destructuring) are allowed",
             type: "boolean",
           },
+          allowSpread: {
+            description:
+              "Configure whether top level spread elements (in objects, arrays, and calls) are allowed",
+            type: "boolean",
+          },
+          allowThrow: {
+            description: "Configure whether top level `throw` statements are allowed",
+            type: "boolean",
+          },
           commonjs: {
             description:
               "Configure whether the code being analyzed is, or is partially, CommonJS code",
@@ -397,6 +414,15 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
       isCommonjs: (node) => (options.commonjs === undefined ? IsCommonJs(node) : options.commonjs),
     };
 
+    // When derivations are allowed, top level `if` statements are allowed too.
+    // Treat them as transparent so the rule still recurses into the condition
+    // and body, reporting anything inside that doesn't obey the rule (e.g. a
+    // disallowed call). A `throw` inside such an `if` is handled by allowThrow.
+    const transparentTypes: ReadonlySet<string> | undefined = options.allowDerived
+      ? new Set(["IfStatement"])
+      : undefined;
+    const atTopLevel = (node: Rule.Node): boolean => isTopLevel(node, transparentTypes);
+
     return {
       AssignmentExpression: (node) => {
         if (isCommonJsExportAssignment(node) && options.isCommonjs(node)) {
@@ -407,7 +433,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -417,7 +443,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       AwaitExpression: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -435,7 +461,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -461,7 +487,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -471,7 +497,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ChainExpression: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -489,7 +515,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -499,7 +525,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       DoWhileStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -509,7 +535,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ForInStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -519,7 +545,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ForOfStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -529,7 +555,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ForStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -539,7 +565,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       FunctionDeclaration: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -551,7 +577,11 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         }
       },
       IfStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (options.allowDerived) {
+          return;
+        }
+
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -569,7 +599,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -593,7 +623,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -607,7 +637,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -625,7 +655,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -635,11 +665,11 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       SpreadElement: (node) => {
-        if (options.allowDerived) {
+        if (options.allowDerived || options.allowSpread) {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -649,7 +679,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       SwitchStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -663,7 +693,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -681,7 +711,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -691,7 +721,11 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       ThrowStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (options.allowThrow) {
+          return;
+        }
+
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -701,7 +735,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       TryStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -719,7 +753,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
           return;
         }
 
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -729,7 +763,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       UpdateExpression: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -739,7 +773,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         });
       },
       VariableDeclarator: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
@@ -758,7 +792,7 @@ export const noTopLevelSideEffects: Rule.RuleModule = {
         }
       },
       WhileStatement: (node) => {
-        if (!isTopLevel(node)) {
+        if (!atTopLevel(node)) {
           return;
         }
 
